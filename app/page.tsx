@@ -23,6 +23,10 @@ export default function Home() {
   const [uploading, setUploading] = useState(false)
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null)
   const [asking, setAsking] = useState(false)
+  const [documentError, setDocumentError] = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [queryError, setQueryError] = useState<string | null>(null)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [uploadType, setUploadType] = useState<'pdf' | 'text' | 'url'>('pdf')
   const [textContent, setTextContent] = useState('')
   const [urlInput, setUrlInput] = useState('')
@@ -68,14 +72,34 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  useEffect(() => {
+    if (!statusMessage) return
+    const timer = setTimeout(() => setStatusMessage(null), 3500)
+    return () => clearTimeout(timer)
+  }, [statusMessage])
+
   async function fetchDocuments() {
-    const res = await fetch('/api/documents')
-    const data = await res.json()
-    setDocuments(data)
+    try {
+      setDocumentError(null)
+      const res = await fetch('/api/documents')
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error ?? 'Failed to fetch documents')
+      }
+      setDocuments(data)
+    } catch (error) {
+      console.error('Fetch documents error:', error)
+      setDocumentError(error instanceof Error ? error.message : 'Failed to fetch documents')
+    }
   }
 
   async function handleUpload() {
-    if (!docName) return alert('Please enter a document name')
+    setUploadError(null)
+    setStatusMessage(null)
+    if (!docName) {
+      setUploadError('Please enter a document name')
+      return
+    }
     setUploading(true)
     try {
       const formData = new FormData()
@@ -84,26 +108,42 @@ export default function Home() {
 
       if (uploadType === 'pdf') {
         const file = fileInputRef.current?.files?.[0]
-        if (!file) return alert('Please select a PDF')
+        if (!file) {
+          setUploadError('Please select a PDF')
+          return
+        }
         formData.append('file', file)
       } else if (uploadType === 'text') {
-        if (!textContent) return alert('Please enter text content')
+        if (!textContent) {
+          setUploadError('Please enter text content')
+          return
+        }
         formData.append('content', textContent)
       } else if (uploadType === 'url') {
-        if (!urlInput) return alert('Please enter a URL')
+        if (!urlInput) {
+          setUploadError('Please enter a URL')
+          return
+        }
         formData.append('url', urlInput)
       }
 
       const res = await fetch('/api/ingest', { method: 'POST', body: formData })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error ?? 'Upload failed')
+      }
 
       if (data.success) {
         setDocName('')
         setTextContent('')
         setUrlInput('')
         if (fileInputRef.current) fileInputRef.current.value = ''
-        fetchDocuments()
+        setStatusMessage('Document uploaded successfully')
+        await fetchDocuments()
       }
+    } catch (error) {
+      console.error('Upload error:', error)
+      setUploadError(error instanceof Error ? error.message : 'Upload failed')
     } finally {
       setUploading(false)
     }
@@ -111,6 +151,8 @@ export default function Home() {
 
   async function handleAsk() {
     if (!question.trim()) return
+    setQueryError(null)
+    setStatusMessage(null)
 
     const userMessage: Message = { role: 'user', content: question }
     setMessages(prev => [...prev, userMessage])
@@ -124,7 +166,13 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question, history }),
       })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error ?? 'Query failed')
+      }
+      if (!data.answer) {
+        throw new Error('No answer returned')
+      }
 
       setMessages(prev => [
         ...prev,
@@ -134,12 +182,17 @@ export default function Home() {
           sources: data.sources,
         },
       ])
+    } catch (error) {
+      console.error('Ask error:', error)
+      setQueryError(error instanceof Error ? error.message : 'Query failed')
     } finally {
       setAsking(false)
     }
   }
 
   async function handleDeleteDocument(id: string) {
+    setDocumentError(null)
+    setStatusMessage(null)
     setDeletingDocumentId(id)
     try {
       const res = await fetch(`/api/documents/${id}`, { method: 'DELETE' })
@@ -148,9 +201,10 @@ export default function Home() {
         throw new Error(payload.error ?? 'Delete failed')
       }
       await fetchDocuments()
+      setStatusMessage('Document deleted')
     } catch (error) {
       console.error('Delete document error:', error)
-      alert('Failed to delete document')
+      setDocumentError(error instanceof Error ? error.message : 'Delete failed')
     } finally {
       setDeletingDocumentId(null)
     }
@@ -218,10 +272,25 @@ export default function Home() {
           >
             {uploading ? 'Processing...' : '+ Add Document'}
           </button>
+          {uploadError && (
+            <p className="rounded-[2px] border border-red-500/40 bg-red-500/10 px-3 py-2 text-[0.72rem] text-red-500">
+              {uploadError}
+            </p>
+          )}
+          {statusMessage && (
+            <p className="rounded-[2px] border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[0.72rem] text-emerald-500">
+              {statusMessage}
+            </p>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto">
           <p className={`mb-4 text-[0.65rem] tracking-[0.15em] ${theme.textMuted}`}>UPLOADED ({documents.length})</p>
+          {documentError && (
+            <p className="mb-3 rounded-[2px] border border-red-500/40 bg-red-500/10 px-3 py-2 text-[0.72rem] text-red-500">
+              {documentError}
+            </p>
+          )}
           {documents.length === 0 && <p className={`text-[0.8rem] italic ${theme.textNoData}`}>No documents yet</p>}
 
           {documents.map(doc => (
@@ -292,13 +361,20 @@ export default function Home() {
         </div>
 
         <div className={`flex gap-4 border-t px-16 pt-6 pb-8 ${theme.panelBorder}`}>
-          <input
-            placeholder="Ask a question about your documents..."
-            value={question}
-            onChange={e => setQuestion(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleAsk()}
-            className={`w-full flex-1 box-border rounded-[2px] border px-5 py-3.5 text-[0.95rem] outline-none ${theme.input}`}
-          />
+          <div className="flex flex-1 flex-col gap-2">
+            <input
+              placeholder="Ask a question about your documents..."
+              value={question}
+              onChange={e => setQuestion(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleAsk()}
+              className={`w-full box-border rounded-[2px] border px-5 py-3.5 text-[0.95rem] outline-none ${theme.input}`}
+            />
+            {queryError && (
+              <p className="rounded-[2px] border border-red-500/40 bg-red-500/10 px-3 py-2 text-[0.72rem] text-red-500">
+                {queryError}
+              </p>
+            )}
+          </div>
           <button
             onClick={handleAsk}
             disabled={asking}
