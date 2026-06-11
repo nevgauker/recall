@@ -5,7 +5,11 @@ let openaiInstance: OpenAI | undefined
 
 function getOpenAI(): OpenAI {
     if (!openaiInstance) {
-        openaiInstance = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+        const apiKey = process.env.OPENAI_API_KEY
+        if (!apiKey) {
+            throw new Error('OPENAI_API_KEY environment variable is not set')
+        }
+        openaiInstance = new OpenAI({ apiKey })
     }
     return openaiInstance
 }
