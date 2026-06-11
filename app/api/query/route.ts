@@ -2,7 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { prisma } from '@/lib/prisma'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+export const dynamic = 'force-dynamic'
+
+let openaiInstance: OpenAI | undefined
+
+function getOpenAI(): OpenAI {
+    if (!openaiInstance) {
+        const apiKey = process.env.OPENAI_API_KEY
+        if (!apiKey) {
+            throw new Error('OPENAI_API_KEY environment variable is not set')
+        }
+        openaiInstance = new OpenAI({ apiKey })
+    }
+    return openaiInstance
+}
 
 interface Chunk {
     id: string
@@ -14,7 +27,7 @@ interface Chunk {
 
 // --- Embed the user question ---
 async function embedQuery(text: string): Promise<number[]> {
-    const response = await openai.embeddings.create({
+    const response = await getOpenAI().embeddings.create({
         model: 'text-embedding-3-small',
         input: text,
     })
@@ -86,7 +99,7 @@ export async function POST(req: NextRequest) {
         ]
 
         // 4. Get answer from GPT-4o
-        const completion = await openai.chat.completions.create({
+        const completion = await getOpenAI().chat.completions.create({
             model: 'gpt-4o',
             messages,
             temperature: 0.2,

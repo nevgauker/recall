@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ingestDocument, extractTextFromPdf, extractTextFromUrl } from '@/lib/ingest'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
     try {
         const formData = await req.formData()
