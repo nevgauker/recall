@@ -1,7 +1,14 @@
 import { prisma } from './prisma'
 import OpenAI from 'openai'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+let openaiInstance: OpenAI | undefined
+
+function getOpenAI(): OpenAI {
+    if (!openaiInstance) {
+        openaiInstance = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+    }
+    return openaiInstance
+}
 
 // --- Text splitter ---
 function splitIntoChunks(text: string, chunkSize = 500, overlap = 50): string[] {
@@ -20,7 +27,7 @@ function splitIntoChunks(text: string, chunkSize = 500, overlap = 50): string[] 
 
 // --- Embed chunks ---
 async function embedTexts(texts: string[]): Promise<number[][]> {
-    const response = await openai.embeddings.create({
+    const response = await getOpenAI().embeddings.create({
         model: 'text-embedding-3-small',
         input: texts,
     })
