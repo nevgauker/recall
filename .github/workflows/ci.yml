@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    # pgvector, not plain postgres: 0_init runs CREATE EXTENSION "vector".
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # A disposable database, so the ownership tests are free to write to it.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      # Placeholders: nothing here reaches OpenAI or Clerk, but the build
+      # prerenders pages that expect a well-formed publishable key.
+      OPENAI_API_KEY: sk-dummy
+      CLERK_SECRET_KEY: sk_test_dummy
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ZmFrZS1kb21haW4uY2xlcmsuYWNjb3VudHMuZGV2JA==
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      # Applies the migrations from scratch, which is also the only automated
+      # check that they still work on an empty database.
+      - run: npx prisma migrate deploy
+
+      # The HNSW index cannot be expressed in schema.prisma and exists only in
+      # migration SQL, so nothing else would notice if a future migration
+      # dropped it. Losing it is silent: search stays correct and goes
+      # sequential. See CLAUDE.md.
+      - name: Verify the HNSW index survived the migrations
+        run: |
+          indexdef=$(psql "$DATABASE_URL" -tAc "SELECT indexdef FROM pg_indexes WHERE indexname = 'DocumentChunk_embedding_hnsw_idx'")
+          echo "$indexdef"
+          case "$indexdef" in
+            *"USING hnsw"*vector_cosine_ops*) ;;
+            *) echo "::error::HNSW index missing or not vector_cosine_ops"; exit 1 ;;
+          esac
+
+      - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm test
+
+      - run: npm run build
