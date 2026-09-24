@@ -10,12 +10,15 @@ datasource db {
 
 model Document {
   id         String   @id @default(uuid())
+  userId     String
   name       String
   sourceType String
   sourceUrl  String?
   createdAt  DateTime @default(now())
 
   chunks DocumentChunk[]
+
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 model DocumentChunk {
@@ -27,4 +30,6 @@ model DocumentChunk {
   createdAt  DateTime                     @default(now())
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
 }

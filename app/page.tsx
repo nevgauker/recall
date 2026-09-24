@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { UserButton } from '@clerk/nextjs'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
-  sources?: { name: string; excerpt: string }[]
+  sources?: { name: string; excerpt: string; similarity?: number }[]
 }
 
 interface Document {
@@ -213,9 +214,12 @@ export default function Home() {
   return (
     <main className={`min-h-screen grid grid-cols-[320px_1fr] font-serif ${theme.main}`}>
       <aside className={`p-8 px-6 flex flex-col gap-8 ${theme.aside}`}>
-        <div>
-          <p className={`mb-2 text-[0.65rem] tracking-[0.2em] ${theme.textSoft}`}>KNOWLEDGE BASE</p>
-          <h1 className="m-0 text-[1.8rem] font-normal tracking-[-0.02em]">Recall</h1>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className={`mb-2 text-[0.65rem] tracking-[0.2em] ${theme.textSoft}`}>KNOWLEDGE BASE</p>
+            <h1 className="m-0 text-[1.8rem] font-normal tracking-[-0.02em]">Recall</h1>
+          </div>
+          <UserButton />
         </div>
 
         <div className="flex gap-2">
@@ -349,6 +353,9 @@ export default function Home() {
                   {msg.sources.map((s, j) => (
                     <div key={j} className={`rounded-[2px] border px-3 py-1.5 text-[0.7rem] tracking-[0.05em] ${theme.sourceChip}`}>
                       [{j + 1}] {s.name}
+                      {typeof s.similarity === 'number' && (
+                        <span className="ml-2 opacity-60">{s.similarity.toFixed(2)}</span>
+                      )}
                     </div>
                   ))}
                 </div>
