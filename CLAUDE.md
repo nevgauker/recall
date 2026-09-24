@@ -49,9 +49,15 @@ Every `Document` carries a Clerk `userId`. The retrieval query in `lib/rag.ts`
 joins through `Document` and filters on `d."userId"` — chunks are never queried
 unscoped. Route handlers get the id from `requireUserId()` in `lib/auth.ts`.
 
-`20260909000100` backfilled pre-auth rows to a `'__preauth__'` sentinel; those
-rows have since been deleted and the column default dropped, so every insert must
-supply an owner explicitly.
+`20260909000100` backfilled pre-auth rows to a `'__preauth__'` sentinel and then
+dropped the column default, so every insert must supply an owner explicitly.
+
+The migration does not delete the sentinel rows — no real user can see them, so
+they survive quietly. Check any database you inherit and clear them:
+
+```sql
+DELETE FROM "Document" WHERE "userId" = '__preauth__';  -- chunks cascade
+```
 
 ## Writing SQL files on Windows
 
