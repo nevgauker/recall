@@ -5,6 +5,9 @@
 Postgres (Supabase) with `pgvector`. Schema changes go through `prisma migrate`,
 never `prisma db push` — see the index caveat below.
 
+Provisioning a new database, or recovering a lost one, is documented in
+[docs/db-provisioning.md](docs/db-provisioning.md).
+
 ### The HNSW index is invisible to Prisma
 
 `DocumentChunk.embedding` is `Unsupported("vector(1536)")`, and Prisma cannot
