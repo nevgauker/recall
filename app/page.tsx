@@ -1,85 +1,37 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { UserButton } from '@clerk/nextjs'
+import { CheckCircle2, FileSearch, Library as LibraryIcon, X, XCircle } from 'lucide-react'
 import { SAMPLE_DOCUMENT_NAME, SAMPLE_QUESTIONS } from '@/lib/sample-document'
+import { Composer, MessageList, Welcome } from '@/components/chat'
+import { Library } from '@/components/library'
+import { ThemeToggle } from '@/components/theme-toggle'
+import type { LibraryDocument, Message, SourceType } from '@/components/types'
 
-interface Message {
-  role: 'user' | 'assistant'
-  content: string
-  sources?: { name: string; excerpt: string; similarity?: number }[]
-}
-
-interface Document {
-  id: string
-  name: string
-  sourceType: string
-  createdAt: string
-}
+type Toast = { kind: 'success' | 'error'; text: string }
 
 export default function Home() {
-  const [documents, setDocuments] = useState<Document[]>([])
-  const [messages, setMessages] = useState<Message[]>([])
-  const [question, setQuestion] = useState('')
-  const [isDark, setIsDark] = useState(true)
-  const [uploading, setUploading] = useState(false)
-  const [loadingSample, setLoadingSample] = useState(false)
-  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null)
-  const [asking, setAsking] = useState(false)
+  const [documents, setDocuments] = useState<LibraryDocument[]>([])
+  const [documentsLoaded, setDocumentsLoaded] = useState(false)
   const [documentError, setDocumentError] = useState<string | null>(null)
-  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [asking, setAsking] = useState(false)
   const [queryError, setQueryError] = useState<string | null>(null)
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const [uploadType, setUploadType] = useState<'pdf' | 'text' | 'url'>('pdf')
-  const [textContent, setTextContent] = useState('')
-  const [urlInput, setUrlInput] = useState('')
-  const [docName, setDocName] = useState('')
-  const chatEndRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const theme = isDark
-    ? {
-        main: 'bg-[#0a0a0a] text-[#e8e3d9]',
-        aside: 'bg-[#0d0d0d] border-r border-[#1e1e1e]',
-        panelBorder: 'border-[#1e1e1e]',
-        tabInactive: 'text-[#444] border-[#222] bg-transparent',
-        textSoft: 'text-[#666]',
-        textMuted: 'text-[#444]',
-        textNoData: 'text-[#333]',
-        input: 'bg-[#0f0f0f] border-[#1e1e1e] text-[#e8e3d9]',
-        button: 'bg-[#e8e3d9] text-[#0a0a0a] border-[#e8e3d9]',
-        userBubble: 'bg-[#141414] border-[#1e1e1e]',
-        assistantBubble: 'bg-[#0f0f0f] border-[#161616]',
-        sourceChip: 'bg-[#0d0d0d] border-[#1a1a1a] text-[#555]',
-      }
-    : {
-        main: 'bg-[#f6f3ec] text-[#1f1b16]',
-        aside: 'bg-[#f0ebe2] border-r border-[#d8d0c4]',
-        panelBorder: 'border-[#d8d0c4]',
-        tabInactive: 'text-[#7a6e60] border-[#cdbfae] bg-transparent',
-        textSoft: 'text-[#6b5f52]',
-        textMuted: 'text-[#7a6e60]',
-        textNoData: 'text-[#8f8170]',
-        input: 'bg-[#fffaf2] border-[#d8d0c4] text-[#1f1b16]',
-        button: 'bg-[#1f1b16] text-[#f6f3ec] border-[#1f1b16]',
-        userBubble: 'bg-[#f4ebdd] border-[#d8d0c4]',
-        assistantBubble: 'bg-[#fffaf2] border-[#d8d0c4]',
-        sourceChip: 'bg-[#efe5d8] border-[#d8d0c4] text-[#7a6e60]',
-      }
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [loadingSample, setLoadingSample] = useState(false)
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [toast, setToast] = useState<Toast | null>(null)
 
   useEffect(() => {
     fetchDocuments()
   }, [])
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  useEffect(() => {
-    if (!statusMessage) return
-    const timer = setTimeout(() => setStatusMessage(null), 3500)
+    if (!toast) return
+    const timer = setTimeout(() => setToast(null), toast.kind === 'error' ? 6000 : 3500)
     return () => clearTimeout(timer)
-  }, [statusMessage])
+  }, [toast])
 
   async function fetchDocuments() {
     try {
@@ -93,68 +45,43 @@ export default function Home() {
     } catch (error) {
       console.error('Fetch documents error:', error)
       setDocumentError(error instanceof Error ? error.message : 'Failed to fetch documents')
+    } finally {
+      setDocumentsLoaded(true)
     }
   }
 
-  async function handleUpload() {
-    setUploadError(null)
-    setStatusMessage(null)
-    if (!docName) {
-      setUploadError('Please enter a document name')
-      return
-    }
-    setUploading(true)
+  async function handleUpload(input: {
+    type: SourceType
+    name: string
+    file: File | null
+    text: string
+    url: string
+  }): Promise<boolean> {
     try {
       const formData = new FormData()
-      formData.append('type', uploadType)
-      formData.append('name', docName)
-
-      if (uploadType === 'pdf') {
-        const file = fileInputRef.current?.files?.[0]
-        if (!file) {
-          setUploadError('Please select a PDF')
-          return
-        }
-        formData.append('file', file)
-      } else if (uploadType === 'text') {
-        if (!textContent) {
-          setUploadError('Please enter text content')
-          return
-        }
-        formData.append('content', textContent)
-      } else if (uploadType === 'url') {
-        if (!urlInput) {
-          setUploadError('Please enter a URL')
-          return
-        }
-        formData.append('url', urlInput)
-      }
+      formData.append('type', input.type)
+      formData.append('name', input.name || 'Untitled')
+      if (input.type === 'pdf' && input.file) formData.append('file', input.file)
+      if (input.type === 'text') formData.append('content', input.text)
+      if (input.type === 'url') formData.append('url', input.url)
 
       const res = await fetch('/api/ingest', { method: 'POST', body: formData })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(data.error ?? 'Upload failed')
       }
-
-      if (data.success) {
-        setDocName('')
-        setTextContent('')
-        setUrlInput('')
-        if (fileInputRef.current) fileInputRef.current.value = ''
-        setStatusMessage('Document uploaded successfully')
-        await fetchDocuments()
-      }
+      setToast({ kind: 'success', text: `Added “${input.name || 'Untitled'}”` })
+      setLibraryOpen(false)
+      await fetchDocuments()
+      return true
     } catch (error) {
       console.error('Upload error:', error)
-      setUploadError(error instanceof Error ? error.message : 'Upload failed')
-    } finally {
-      setUploading(false)
+      setToast({ kind: 'error', text: error instanceof Error ? error.message : 'Upload failed' })
+      return false
     }
   }
 
   async function handleLoadSample() {
-    setUploadError(null)
-    setStatusMessage(null)
     setLoadingSample(true)
     try {
       const res = await fetch('/api/sample', { method: 'POST' })
@@ -162,28 +89,29 @@ export default function Home() {
       if (!res.ok) {
         throw new Error(data.error ?? 'Could not load the sample document')
       }
-      setStatusMessage('Sample handbook added. Try one of the questions.')
+      setToast({ kind: 'success', text: 'Sample handbook added. Pick a question to try.' })
+      setLibraryOpen(false)
       await fetchDocuments()
     } catch (error) {
       console.error('Sample load error:', error)
-      setUploadError(error instanceof Error ? error.message : 'Could not load the sample document')
+      setToast({
+        kind: 'error',
+        text: error instanceof Error ? error.message : 'Could not load the sample document',
+      })
     } finally {
       setLoadingSample(false)
     }
   }
 
-  async function handleAsk(text = question) {
+  async function handleAsk(text: string) {
     if (!text.trim() || asking) return
     setQueryError(null)
-    setStatusMessage(null)
 
-    const userMessage: Message = { role: 'user', content: text }
-    setMessages(prev => [...prev, userMessage])
-    setQuestion('')
+    const history = messages.map(m => ({ role: m.role, content: m.content }))
+    setMessages(prev => [...prev, { role: 'user', content: text }])
     setAsking(true)
 
     try {
-      const history = messages.map(m => ({ role: m.role, content: m.content }))
       const res = await fetch('/api/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -196,15 +124,7 @@ export default function Home() {
       if (!data.answer) {
         throw new Error('No answer returned')
       }
-
-      setMessages(prev => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: data.answer,
-          sources: data.sources,
-        },
-      ])
+      setMessages(prev => [...prev, { role: 'assistant', content: data.answer, sources: data.sources }])
     } catch (error) {
       console.error('Ask error:', error)
       setQueryError(error instanceof Error ? error.message : 'Query failed')
@@ -215,8 +135,7 @@ export default function Home() {
 
   async function handleDeleteDocument(id: string) {
     setDocumentError(null)
-    setStatusMessage(null)
-    setDeletingDocumentId(id)
+    setDeletingId(id)
     try {
       const res = await fetch(`/api/documents/${id}`, { method: 'DELETE' })
       if (!res.ok) {
@@ -224,219 +143,123 @@ export default function Home() {
         throw new Error(payload.error ?? 'Delete failed')
       }
       await fetchDocuments()
-      setStatusMessage('Document deleted')
+      setToast({ kind: 'success', text: 'Document deleted' })
     } catch (error) {
       console.error('Delete document error:', error)
       setDocumentError(error instanceof Error ? error.message : 'Delete failed')
     } finally {
-      setDeletingDocumentId(null)
+      setDeletingId(null)
     }
   }
 
+  const hasDocuments = documents.length > 0
+  const suggestions = documents.some(d => d.name === SAMPLE_DOCUMENT_NAME) ? SAMPLE_QUESTIONS : []
+
+  const library = (
+    <Library
+      documents={documents}
+      documentsLoaded={documentsLoaded}
+      documentError={documentError}
+      deletingId={deletingId}
+      loadingSample={loadingSample}
+      onUpload={handleUpload}
+      onDelete={handleDeleteDocument}
+      onLoadSample={handleLoadSample}
+    />
+  )
+
   return (
-    <main className={`min-h-screen grid grid-cols-1 md:grid-cols-[320px_1fr] font-serif ${theme.main}`}>
-      <aside className={`p-6 md:p-8 md:px-6 flex flex-col gap-8 ${theme.aside}`}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className={`mb-2 text-[0.65rem] tracking-[0.2em] ${theme.textSoft}`}>KNOWLEDGE BASE</p>
-            <h1 className="m-0 text-[1.8rem] font-normal tracking-[-0.02em]">Recall</h1>
-          </div>
-          <UserButton />
+    <div className="flex h-dvh flex-col bg-canvas text-ink">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface px-4">
+        <div className="flex items-center gap-2.5">
+          <span className="grid size-8 place-items-center rounded-lg bg-accent text-on-accent">
+            <FileSearch className="size-4" />
+          </span>
+          <span className="text-[15px] font-semibold tracking-tight">Recall</span>
+          <span className="hidden text-sm text-muted sm:inline">· Ask your documents</span>
         </div>
 
-        <div className="flex gap-2">
-          {(['pdf', 'text', 'url'] as const).map(t => (
-            <button
-              key={t}
-              onClick={() => setUploadType(t)}
-              className={`flex-1 cursor-pointer border px-2 py-1.5 text-[0.7rem] uppercase tracking-[0.1em] transition-all duration-150 ${
-                uploadType === t ? theme.button : theme.tabInactive
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-col gap-3">
-          <input
-            placeholder="Document name"
-            value={docName}
-            onChange={e => setDocName(e.target.value)}
-            className={`w-full box-border rounded-[2px] border px-3.5 py-2.5 text-[0.82rem] outline-none ${theme.input}`}
-          />
-          {uploadType === 'pdf' && (
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf"
-              className={`w-full box-border rounded-[2px] border px-3.5 py-2.5 text-[0.82rem] outline-none ${theme.input}`}
-            />
-          )}
-          {uploadType === 'text' && (
-            <textarea
-              placeholder="Paste your text here..."
-              value={textContent}
-              onChange={e => setTextContent(e.target.value)}
-              rows={5}
-              className={`w-full box-border resize-y rounded-[2px] border px-3.5 py-2.5 text-[0.82rem] outline-none ${theme.input}`}
-            />
-          )}
-          {uploadType === 'url' && (
-            <input
-              placeholder="https://..."
-              value={urlInput}
-              onChange={e => setUrlInput(e.target.value)}
-              className={`w-full box-border rounded-[2px] border px-3.5 py-2.5 text-[0.82rem] outline-none ${theme.input}`}
-            />
-          )}
-
+        <div className="ml-auto flex items-center gap-1">
           <button
-            onClick={handleUpload}
-            disabled={uploading}
-            className={`cursor-pointer rounded-[2px] border px-4 py-2.5 text-[0.75rem] uppercase tracking-[0.1em] disabled:cursor-not-allowed disabled:opacity-70 ${theme.button}`}
+            onClick={() => setLibraryOpen(true)}
+            className="flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-muted transition hover:bg-subtle hover:text-ink md:hidden"
           >
-            {uploading ? 'Processing...' : '+ Add Document'}
+            <LibraryIcon className="size-4.5" />
+            {documents.length}
           </button>
-          {uploadError && (
-            <p className="rounded-[2px] border border-red-500/40 bg-red-500/10 px-3 py-2 text-[0.72rem] text-red-500">
-              {uploadError}
-            </p>
-          )}
-          {statusMessage && (
-            <p className="rounded-[2px] border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[0.72rem] text-emerald-500">
-              {statusMessage}
-            </p>
-          )}
+          <ThemeToggle />
+          <div className="ml-1 flex size-9 items-center justify-center">
+            <UserButton />
+          </div>
         </div>
+      </header>
 
-        <div className="flex-1 overflow-y-auto">
-          <p className={`mb-4 text-[0.65rem] tracking-[0.15em] ${theme.textMuted}`}>UPLOADED ({documents.length})</p>
-          {documentError && (
-            <p className="mb-3 rounded-[2px] border border-red-500/40 bg-red-500/10 px-3 py-2 text-[0.72rem] text-red-500">
-              {documentError}
-            </p>
-          )}
-          {documents.length === 0 && (
-            <div className="flex flex-col gap-3">
-              <p className={`text-[0.8rem] italic ${theme.textNoData}`}>No documents yet</p>
-              <button
-                onClick={handleLoadSample}
-                disabled={loadingSample}
-                className={`cursor-pointer rounded-[2px] border px-3 py-2 text-left text-[0.72rem] tracking-[0.05em] disabled:cursor-not-allowed disabled:opacity-70 ${theme.tabInactive}`}
-              >
-                {loadingSample ? 'Loading sample...' : 'No file handy? Load a sample employee handbook ->'}
-              </button>
-            </div>
-          )}
+      <div className="flex min-h-0 flex-1">
+        <aside className="hidden w-80 shrink-0 border-r border-line bg-surface md:block">{library}</aside>
 
-          {documents.map(doc => (
-            <div key={doc.id} className={`mb-2 rounded-[2px] border p-3 ${theme.panelBorder}`}>
-              <p className="m-0 text-[0.85rem]">{doc.name}</p>
-              <div className="mt-1 flex items-center justify-between gap-3">
-                <p className={`text-[0.65rem] tracking-[0.1em] ${theme.textMuted}`}>{doc.sourceType.toUpperCase()}</p>
+        {libraryOpen && (
+          <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Library">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setLibraryOpen(false)} />
+            <div className="absolute inset-y-0 left-0 flex w-[88%] max-w-sm flex-col bg-surface shadow-xl">
+              <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
+                <span className="text-sm font-semibold">Your library</span>
                 <button
-                  onClick={() => handleDeleteDocument(doc.id)}
-                  disabled={deletingDocumentId === doc.id}
-                  className="cursor-pointer rounded-[2px] border border-red-500/50 px-2 py-1 text-[0.6rem] uppercase tracking-[0.08em] text-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => setLibraryOpen(false)}
+                  aria-label="Close library"
+                  className="grid size-9 place-items-center rounded-lg text-muted hover:bg-subtle"
                 >
-                  {deletingDocumentId === doc.id ? 'Deleting...' : 'Delete'}
+                  <X className="size-4.5" />
                 </button>
               </div>
+              <div className="min-h-0 flex-1">{library}</div>
             </div>
-          ))}
-        </div>
-      </aside>
+          </div>
+        )}
 
-      <section className="relative flex min-h-[80vh] flex-col md:h-screen">
-        <button
-          onClick={() => setIsDark(prev => !prev)}
-          className={`absolute top-4 right-4 z-10 cursor-pointer rounded-[2px] border px-3 py-2 text-[0.68rem] uppercase tracking-[0.09em] ${theme.button}`}
-        >
-          {isDark ? 'Light Mode' : 'Dark Mode'}
-        </button>
-
-        <div className="flex flex-1 flex-col gap-8 overflow-y-auto px-4 pt-16 pb-8 md:px-16 md:py-12">
-          {messages.length === 0 && (
-            <div className={`m-auto text-center ${theme.textNoData}`}>
-              <p className="mb-4 text-5xl">o</p>
-              <p className="text-base tracking-[0.05em]">Ask anything from your documents</p>
-              {documents.some(d => d.name === SAMPLE_DOCUMENT_NAME) && (
-                <div className="mt-6 flex max-w-[520px] flex-wrap justify-center gap-2">
-                  {SAMPLE_QUESTIONS.map(q => (
-                    <button
-                      key={q}
-                      onClick={() => handleAsk(q)}
-                      className={`cursor-pointer rounded-[2px] border px-3 py-1.5 text-[0.75rem] ${theme.sourceChip}`}
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {messages.map((msg, i) => (
-            <div key={i} className={`max-w-[720px] ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
-              <p
-                className={`mb-1.5 text-[0.65rem] tracking-[0.15em] ${theme.textMuted} ${
-                  msg.role === 'user' ? 'text-right' : 'text-left'
-                }`}
-              >
-                {msg.role === 'user' ? 'YOU' : 'RECALL'}
-              </p>
-              <div
-                className={`whitespace-pre-wrap rounded-[2px] border px-6 py-5 text-[0.92rem] leading-[1.7] ${
-                  msg.role === 'user' ? theme.userBubble : theme.assistantBubble
-                }`}
-              >
-                {msg.content}
-              </div>
-
-              {msg.sources && msg.sources.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {msg.sources.map((s, j) => (
-                    <div key={j} className={`rounded-[2px] border px-3 py-1.5 text-[0.7rem] tracking-[0.05em] ${theme.sourceChip}`}>
-                      [{j + 1}] {s.name}
-                      {typeof s.similarity === 'number' && (
-                        <span className="ml-2 opacity-60">{s.similarity.toFixed(2)}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-
-          {asking && <div className={`self-start text-[0.85rem] italic ${theme.textNoData}`}>Searching documents...</div>}
-          <div ref={chatEndRef} />
-        </div>
-
-        <div className={`flex gap-3 border-t px-4 pt-4 pb-6 md:gap-4 md:px-16 md:pt-6 md:pb-8 ${theme.panelBorder}`}>
-          <div className="flex flex-1 flex-col gap-2">
-            <input
-              placeholder="Ask a question about your documents..."
-              value={question}
-              onChange={e => setQuestion(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleAsk()}
-              className={`w-full box-border rounded-[2px] border px-5 py-3.5 text-[0.95rem] outline-none ${theme.input}`}
-            />
-            {queryError && (
-              <p className="rounded-[2px] border border-red-500/40 bg-red-500/10 px-3 py-2 text-[0.72rem] text-red-500">
-                {queryError}
-              </p>
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {messages.length === 0 ? (
+              documentsLoaded && (
+                <Welcome
+                  hasDocuments={hasDocuments}
+                  documentCount={documents.length}
+                  suggestions={suggestions}
+                  loadingSample={loadingSample}
+                  onLoadSample={handleLoadSample}
+                  onOpenLibrary={() => setLibraryOpen(true)}
+                  onAsk={handleAsk}
+                />
+              )
+            ) : (
+              <MessageList messages={messages} asking={asking} />
             )}
           </div>
-          <button
-            onClick={() => handleAsk()}
+
+          <Composer
             disabled={asking}
-            className={`cursor-pointer rounded-[2px] border px-4 py-3.5 md:px-7 text-[0.8rem] uppercase tracking-[0.1em] disabled:cursor-not-allowed disabled:opacity-70 ${theme.button}`}
-          >
-            {asking ? '...' : 'Ask ->'}
+            error={queryError}
+            placeholder={hasDocuments ? 'Ask a question about your documents…' : 'Add a document first, then ask anything…'}
+            onSend={handleAsk}
+          />
+        </main>
+      </div>
+
+      {toast && (
+        <div
+          role="status"
+          className="fixed bottom-24 left-1/2 z-50 flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-start gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm shadow-lg"
+        >
+          {toast.kind === 'success' ? (
+            <CheckCircle2 className="mt-px size-4 shrink-0 text-emerald-500" />
+          ) : (
+            <XCircle className="mt-px size-4 shrink-0 text-red-500" />
+          )}
+          <span className="text-ink">{toast.text}</span>
+          <button onClick={() => setToast(null)} aria-label="Dismiss" className="ml-1 text-muted hover:text-ink">
+            <X className="size-4" />
           </button>
         </div>
-      </section>
-    </main>
+      )}
+    </div>
   )
 }

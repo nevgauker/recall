@@ -14,9 +14,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Recall",
-  description: "Ask questions against your own documents.",
+  title: "Recall · Ask your documents",
+  description:
+    "Upload PDFs, text or web pages and get cited answers drawn only from your own documents.",
 };
+
+// Runs before first paint so the page never flashes the wrong theme. Reads the
+// saved choice, falling back to the system preference; storage can throw in
+// private windows, hence the try.
+const themeScript = `
+try {
+  var t = localStorage.getItem('recall-theme');
+  var dark = t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.classList.toggle('dark', dark);
+} catch (e) {}
+`;
 
 export default function RootLayout({
   children,
@@ -24,11 +36,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    // The theme script changes <html>'s class before React hydrates.
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        <ClerkProvider>{children}</ClerkProvider>
+        <ClerkProvider
+          appearance={{
+            variables: {
+              colorPrimary: "#4f46e5",
+              borderRadius: "0.625rem",
+              fontFamily: "var(--font-geist-sans)",
+            },
+          }}
+        >
+          {children}
+        </ClerkProvider>
       </body>
     </html>
   );
