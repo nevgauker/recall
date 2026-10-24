@@ -163,8 +163,11 @@ Listed on purpose: knowing where a system stops is part of building it.
 - **Retrieval is tested on one short document.** The eval covers seven chunks.
   Next is a multi-document corpus with near-duplicate distractors, which tests
   ranking much harder.
+- **PDFs are capped at 4 MB**, because Vercel rejects function request bodies
+  over 4.5 MB before the app sees them. Larger files need uploads that go
+  straight to storage, with the function only reading them.
 - **Uploads are processed inside the request**, within a 60-second function
-  limit. Very large PDFs should move to a background job.
+  limit. Very large documents should move to a background job.
 - **No OCR.** Scanned PDFs with no text layer can't be read yet.
 - **Web pages are reduced to text with simple rules**, not a readability
   parser, so page navigation can end up in the index.

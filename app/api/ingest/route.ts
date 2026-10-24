@@ -8,6 +8,7 @@ import {
     extractTextFromUrl,
     ingestDocument,
 } from '@/lib/ingest'
+import { MAX_DOCUMENT_NAME_CHARS } from '@/lib/limits'
 import { enforceDocumentCap, enforceRateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
@@ -43,8 +44,8 @@ export async function POST(req: NextRequest) {
         const sourceType = type as SourceType
 
         const name = requireString(formData.get('name'), 'Document name')
-        if (name.length > 200) {
-            throw new AppError('Document name must be 200 characters or fewer.')
+        if (name.length > MAX_DOCUMENT_NAME_CHARS) {
+            throw new AppError(`Document name must be ${MAX_DOCUMENT_NAME_CHARS} characters or fewer.`)
         }
 
         let content = ''

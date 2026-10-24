@@ -3,14 +3,13 @@ import OpenAI from 'openai'
 import { prisma } from './prisma'
 import { AppError } from './errors'
 import { safeFetchText } from './safe-fetch'
+import { MAX_URL_BYTES } from './limits'
 
 export const EMBEDDING_MODEL = 'text-embedding-3-small'
 export const EMBEDDING_DIMENSIONS = 1536
 
-/** Upload / fetch ceilings. Kept here so the route and the UI agree. */
-export const MAX_PDF_BYTES = 20 * 1024 * 1024
-export const MAX_TEXT_CHARS = 1_000_000
-export const MAX_URL_BYTES = 5 * 1024 * 1024
+// Upload / fetch ceilings live in ./limits so client components can share them.
+export { MAX_PDF_BYTES, MAX_TEXT_CHARS, MAX_URL_BYTES } from './limits'
 
 /** Chunking. `CHUNK_OVERLAP` must stay below `CHUNK_SIZE` or the walk stalls. */
 // Was 500/50. At 500 words a short paragraph is a small fraction of its chunk,
