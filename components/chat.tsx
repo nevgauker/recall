@@ -140,7 +140,7 @@ function renderInline(text: string, onCite: (n: number) => void, sourceCount: nu
               <button
                 key={n}
                 onClick={() => onCite(n)}
-                className="mx-0.5 inline-grid h-[18px] min-w-[18px] -translate-y-px place-items-center rounded bg-accent-soft px-1 align-middle text-[11px] font-semibold text-accent-ink transition hover:bg-accent hover:text-on-accent"
+                className="mx-0.5 inline-grid h-4.5 min-w-4.5 -translate-y-px place-items-center rounded bg-accent-soft px-1 align-middle text-[11px] font-semibold text-accent-ink transition hover:bg-accent hover:text-on-accent"
                 aria-label={`Show source ${n}`}
               >
                 {n}
@@ -207,7 +207,7 @@ function SourceCard({ source, index, active }: { source: Source; index: number; 
       }`}
     >
       <div className="mb-1 flex items-center gap-2">
-        <span className="grid h-[18px] min-w-[18px] place-items-center rounded bg-subtle px-1 text-[11px] font-semibold text-muted">
+        <span className="grid h-4.5 min-w-4.5 place-items-center rounded bg-subtle px-1 text-[11px] font-semibold text-muted">
           {index + 1}
         </span>
         <span className="truncate text-xs font-medium text-ink">{source.name}</span>
@@ -284,12 +284,21 @@ function AssistantMessage({ message }: { message: Message }) {
   )
 }
 
-export function MessageList({ messages, asking }: { messages: Message[]; asking: boolean }) {
+export function MessageList({
+  messages,
+  asking,
+  autoScroll = true,
+}: {
+  messages: Message[]
+  asking: boolean
+  /** Off for static previews, where scrolling would move the host page. */
+  autoScroll?: boolean
+}) {
   const end = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, asking])
+    if (autoScroll) end.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, asking, autoScroll])
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-6">
@@ -375,7 +384,7 @@ export function Composer({
           }}
           placeholder={placeholder}
           maxLength={2000}
-          className="max-h-[200px] flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] text-ink placeholder:text-muted/70 outline-none"
+          className="max-h-50 flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] text-ink placeholder:text-muted/70 outline-none"
           aria-label="Your question"
         />
         <button

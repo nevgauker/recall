@@ -38,6 +38,7 @@ Set these for **Production** (and **Preview** if you want PR previews to work):
 | `CLERK_SECRET_KEY` | From the Clerk dashboard |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/sign-in` |
 | `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | `/sign-up` |
+| `NEXT_PUBLIC_CONTACT_URL` | Optional: your contact link for the landing page's "Get in touch" section. Unset hides it. Rebuild after changing — `NEXT_PUBLIC_` values are baked in at build time. |
 
 **Why pooled here but unpooled locally:** serverless functions open a
 connection per instance, which the pooler absorbs. Migrations can't run through

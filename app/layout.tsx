@@ -13,10 +13,25 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const description =
+  "Upload PDFs, text or web pages and get cited answers drawn only from your own documents, plus an honest \"I don't know\" when the answer isn't there.";
+
+// Link previews need absolute URLs. Vercel sets the production hostname;
+// locally this falls back to the dev server.
+const siteUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  : "http://localhost:3000";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: "Recall · Ask your documents",
-  description:
-    "Upload PDFs, text or web pages and get cited answers drawn only from your own documents.",
+  description,
+  openGraph: {
+    title: "Recall · Ask your documents. Get answers you can check.",
+    description,
+    type: "website",
+  },
+  twitter: { card: "summary_large_image" },
 };
 
 // Runs before first paint so the page never flashes the wrong theme. Reads the
