@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireUserId } from '@/lib/auth'
 import { AppError, isAppError } from '@/lib/errors'
 import { answerQuestion } from '@/lib/rag'
+import { enforceRateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -9,6 +10,7 @@ export const runtime = 'nodejs'
 export async function POST(req: NextRequest) {
     try {
         const userId = await requireUserId()
+        await enforceRateLimit(userId, 'query')
 
         const body = await req.json().catch(() => {
             throw new AppError('Malformed request body.')
@@ -23,7 +25,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ answer, sources })
     } catch (error) {
         if (isAppError(error)) {
-            return NextResponse.json({ error: error.message }, { status: error.status })
+            return NextResponse.json({ error: error.message }, { status: error.status, headers: error.headers })
         }
         console.error('Query error:', error)
         return NextResponse.json({ error: 'Query failed' }, { status: 500 })

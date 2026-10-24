@@ -8,6 +8,7 @@ import {
     extractTextFromUrl,
     ingestDocument,
 } from '@/lib/ingest'
+import { enforceDocumentCap, enforceRateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -25,6 +26,8 @@ function requireString(value: FormDataEntryValue | null, label: string): string 
 export async function POST(req: NextRequest) {
     try {
         const userId = await requireUserId()
+        await enforceDocumentCap(userId)
+        await enforceRateLimit(userId, 'ingest')
 
         const formData = await req.formData().catch(() => {
             throw new AppError('Malformed upload.')
@@ -80,7 +83,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, ...result })
     } catch (error) {
         if (isAppError(error)) {
-            return NextResponse.json({ error: error.message }, { status: error.status })
+            return NextResponse.json({ error: error.message }, { status: error.status, headers: error.headers })
         }
         console.error('Ingest error:', error)
         return NextResponse.json({ error: 'Ingestion failed' }, { status: 500 })
