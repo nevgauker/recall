@@ -13,8 +13,12 @@ export const MAX_TEXT_CHARS = 1_000_000
 export const MAX_URL_BYTES = 5 * 1024 * 1024
 
 /** Chunking. `CHUNK_OVERLAP` must stay below `CHUNK_SIZE` or the walk stalls. */
-const CHUNK_SIZE = 500
-const CHUNK_OVERLAP = 50
+// Was 500/50. At 500 words a short paragraph is a small fraction of its chunk,
+// which dilutes the embedding: in the eval (eval/run.ts) a sick-leave question
+// scored exactly at DEFAULT_MIN_SIMILARITY and retrieved nothing. At 200 the
+// weakest answerable question clears the threshold by a usable margin.
+const CHUNK_SIZE = 200
+const CHUNK_OVERLAP = 40
 const MAX_CHUNK_CHARS = 8_000
 const MAX_CHUNKS_PER_DOCUMENT = 2_000
 

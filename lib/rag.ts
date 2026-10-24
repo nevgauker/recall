@@ -49,6 +49,8 @@ export interface AnswerResult {
     answer: string
     sources: Source[]
     chunks: RetrievedChunk[]
+    /** Chat-completion token usage; absent when no model call was made. */
+    usage?: { promptTokens: number; completionTokens: number }
 }
 
 /** Accept only well-formed history, and only a bounded amount of it. */
@@ -180,10 +182,14 @@ export async function answerQuestion(options: {
         throw new AppError('The model returned an empty answer.', 502)
     }
 
+    const usage = completion.usage
+        ? { promptTokens: completion.usage.prompt_tokens, completionTokens: completion.usage.completion_tokens }
+        : undefined
+
     // Retrieval always returns the nearest chunks, relevant or not. When the
     // model declines, listing them as "sources" would contradict the answer.
     if (answer.trim().startsWith(NO_ANSWER_TEXT)) {
-        return { answer, sources: [], chunks }
+        return { answer, sources: [], chunks, usage }
     }
 
     return {
@@ -194,5 +200,6 @@ export async function answerQuestion(options: {
             similarity: c.similarity,
         })),
         chunks,
+        usage,
     }
 }
