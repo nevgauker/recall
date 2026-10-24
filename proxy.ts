@@ -1,10 +1,17 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 
-// Everything except the Clerk-hosted auth routes requires a session. The API
-// routes are matched too, so an unauthenticated request never reaches a
-// handler; each handler still calls requireUserId() so it fails closed on its
+// Everything except the auth pages, the landing page and its link-preview
+// image requires a session. `/` is public because app/page.tsx renders the
+// landing page for signed-out visitors and the app only for a signed-in user.
+// The API routes are matched too, so an unauthenticated request never reaches
+// a handler; each handler still calls requireUserId() so it fails closed on its
 // own if the matcher is ever loosened.
-const isPublicRoute = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)'])
+const isPublicRoute = createRouteMatcher([
+    '/',
+    '/sign-in(.*)',
+    '/sign-up(.*)',
+    '/opengraph-image(.*)',
+])
 
 export default clerkMiddleware(async (auth, request) => {
     if (!isPublicRoute(request)) {
