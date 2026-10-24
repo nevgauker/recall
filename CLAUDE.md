@@ -2,11 +2,12 @@
 
 ## Database
 
-Postgres (Supabase) with `pgvector`. Schema changes go through `prisma migrate`,
+Postgres (Neon) with `pgvector`. Schema changes go through `prisma migrate`,
 never `prisma db push` — see the index caveat below.
 
 Provisioning a new database, or recovering a lost one, is documented in
 [docs/db-provisioning.md](docs/db-provisioning.md).
+Deploying to Vercel is in [docs/deploy.md](docs/deploy.md).
 
 ### The HNSW index is invisible to Prisma
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { UserButton } from '@clerk/nextjs'
+import { SAMPLE_DOCUMENT_NAME, SAMPLE_QUESTIONS } from '@/lib/sample-document'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -22,6 +23,7 @@ export default function Home() {
   const [question, setQuestion] = useState('')
   const [isDark, setIsDark] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [loadingSample, setLoadingSample] = useState(false)
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null)
   const [asking, setAsking] = useState(false)
   const [documentError, setDocumentError] = useState<string | null>(null)
@@ -150,12 +152,32 @@ export default function Home() {
     }
   }
 
-  async function handleAsk() {
-    if (!question.trim()) return
+  async function handleLoadSample() {
+    setUploadError(null)
+    setStatusMessage(null)
+    setLoadingSample(true)
+    try {
+      const res = await fetch('/api/sample', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error ?? 'Could not load the sample document')
+      }
+      setStatusMessage('Sample handbook added. Try one of the questions.')
+      await fetchDocuments()
+    } catch (error) {
+      console.error('Sample load error:', error)
+      setUploadError(error instanceof Error ? error.message : 'Could not load the sample document')
+    } finally {
+      setLoadingSample(false)
+    }
+  }
+
+  async function handleAsk(text = question) {
+    if (!text.trim() || asking) return
     setQueryError(null)
     setStatusMessage(null)
 
-    const userMessage: Message = { role: 'user', content: question }
+    const userMessage: Message = { role: 'user', content: text }
     setMessages(prev => [...prev, userMessage])
     setQuestion('')
     setAsking(true)
@@ -165,7 +187,7 @@ export default function Home() {
       const res = await fetch('/api/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, history }),
+        body: JSON.stringify({ question: text, history }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -212,8 +234,8 @@ export default function Home() {
   }
 
   return (
-    <main className={`min-h-screen grid grid-cols-[320px_1fr] font-serif ${theme.main}`}>
-      <aside className={`p-8 px-6 flex flex-col gap-8 ${theme.aside}`}>
+    <main className={`min-h-screen grid grid-cols-1 md:grid-cols-[320px_1fr] font-serif ${theme.main}`}>
+      <aside className={`p-6 md:p-8 md:px-6 flex flex-col gap-8 ${theme.aside}`}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className={`mb-2 text-[0.65rem] tracking-[0.2em] ${theme.textSoft}`}>KNOWLEDGE BASE</p>
@@ -295,7 +317,18 @@ export default function Home() {
               {documentError}
             </p>
           )}
-          {documents.length === 0 && <p className={`text-[0.8rem] italic ${theme.textNoData}`}>No documents yet</p>}
+          {documents.length === 0 && (
+            <div className="flex flex-col gap-3">
+              <p className={`text-[0.8rem] italic ${theme.textNoData}`}>No documents yet</p>
+              <button
+                onClick={handleLoadSample}
+                disabled={loadingSample}
+                className={`cursor-pointer rounded-[2px] border px-3 py-2 text-left text-[0.72rem] tracking-[0.05em] disabled:cursor-not-allowed disabled:opacity-70 ${theme.tabInactive}`}
+              >
+                {loadingSample ? 'Loading sample...' : 'No file handy? Load a sample employee handbook ->'}
+              </button>
+            </div>
+          )}
 
           {documents.map(doc => (
             <div key={doc.id} className={`mb-2 rounded-[2px] border p-3 ${theme.panelBorder}`}>
@@ -315,7 +348,7 @@ export default function Home() {
         </div>
       </aside>
 
-      <section className="relative flex h-screen flex-col">
+      <section className="relative flex min-h-[80vh] flex-col md:h-screen">
         <button
           onClick={() => setIsDark(prev => !prev)}
           className={`absolute top-4 right-4 z-10 cursor-pointer rounded-[2px] border px-3 py-2 text-[0.68rem] uppercase tracking-[0.09em] ${theme.button}`}
@@ -323,11 +356,24 @@ export default function Home() {
           {isDark ? 'Light Mode' : 'Dark Mode'}
         </button>
 
-        <div className="flex flex-1 flex-col gap-8 overflow-y-auto px-16 py-12">
+        <div className="flex flex-1 flex-col gap-8 overflow-y-auto px-4 pt-16 pb-8 md:px-16 md:py-12">
           {messages.length === 0 && (
             <div className={`m-auto text-center ${theme.textNoData}`}>
               <p className="mb-4 text-5xl">o</p>
               <p className="text-base tracking-[0.05em]">Ask anything from your documents</p>
+              {documents.some(d => d.name === SAMPLE_DOCUMENT_NAME) && (
+                <div className="mt-6 flex max-w-[520px] flex-wrap justify-center gap-2">
+                  {SAMPLE_QUESTIONS.map(q => (
+                    <button
+                      key={q}
+                      onClick={() => handleAsk(q)}
+                      className={`cursor-pointer rounded-[2px] border px-3 py-1.5 text-[0.75rem] ${theme.sourceChip}`}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -367,7 +413,7 @@ export default function Home() {
           <div ref={chatEndRef} />
         </div>
 
-        <div className={`flex gap-4 border-t px-16 pt-6 pb-8 ${theme.panelBorder}`}>
+        <div className={`flex gap-3 border-t px-4 pt-4 pb-6 md:gap-4 md:px-16 md:pt-6 md:pb-8 ${theme.panelBorder}`}>
           <div className="flex flex-1 flex-col gap-2">
             <input
               placeholder="Ask a question about your documents..."
@@ -383,9 +429,9 @@ export default function Home() {
             )}
           </div>
           <button
-            onClick={handleAsk}
+            onClick={() => handleAsk()}
             disabled={asking}
-            className={`cursor-pointer rounded-[2px] border px-7 py-3.5 text-[0.8rem] uppercase tracking-[0.1em] disabled:cursor-not-allowed disabled:opacity-70 ${theme.button}`}
+            className={`cursor-pointer rounded-[2px] border px-4 py-3.5 md:px-7 text-[0.8rem] uppercase tracking-[0.1em] disabled:cursor-not-allowed disabled:opacity-70 ${theme.button}`}
           >
             {asking ? '...' : 'Ask ->'}
           </button>

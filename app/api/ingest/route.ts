@@ -12,6 +12,9 @@ import { enforceDocumentCap, enforceRateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+// PDF parsing plus batched embedding of a large document can take a while;
+// serverless hosts default to as little as 10s.
+export const maxDuration = 60
 
 const SOURCE_TYPES = ['pdf', 'text', 'url'] as const
 type SourceType = (typeof SOURCE_TYPES)[number]
