@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
+  AlertCircle,
   ArrowUp,
   BookOpenText,
   Check,
@@ -10,9 +11,11 @@ import {
   Loader2,
   MessageSquareText,
   Quote,
+  RotateCcw,
   Sparkles,
   Upload,
 } from 'lucide-react'
+import { parseAnswer, parseCitationGroup } from './answer-format'
 import type { Message, Source } from './types'
 
 /* ----------------------------- Empty states ----------------------------- */
@@ -132,7 +135,7 @@ function renderInline(text: string, onCite: (n: number) => void, sourceCount: nu
     }
     const cite = part.match(/^\[(\d+(?:,\s*\d+)*)\]$/)
     if (cite) {
-      const numbers = cite[1].split(',').map(n => Number(n.trim()))
+      const numbers = parseCitationGroup(cite[1])
       return (
         <Fragment key={i}>
           {numbers.map(n =>
@@ -156,40 +159,27 @@ function renderInline(text: string, onCite: (n: number) => void, sourceCount: nu
   })
 }
 
-/** Paragraphs and bullet / numbered lists — the subset of markdown the model uses. */
+/** Paragraphs and lists, with inline bold and citations. Parsing is in answer-format.ts. */
 function AnswerText({ text, sourceCount, onCite }: { text: string; sourceCount: number; onCite: (n: number) => void }) {
-  const blocks: ReactNode[] = []
-  let list: { ordered: boolean; items: string[] } | null = null
-
-  const flush = () => {
-    if (!list) return
-    const Tag = list.ordered ? 'ol' : 'ul'
-    blocks.push(
-      <Tag key={blocks.length} className={`space-y-1 pl-5 ${list.ordered ? 'list-decimal' : 'list-disc'}`}>
-        {list.items.map((item, i) => (
-          <li key={i}>{renderInline(item, onCite, sourceCount)}</li>
-        ))}
-      </Tag>
-    )
-    list = null
-  }
-
-  for (const line of text.split('\n')) {
-    const bullet = line.match(/^\s*[-*•]\s+(.*)$/)
-    const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/)
-    if (bullet || numbered) {
-      const ordered = !!numbered
-      if (list && list.ordered !== ordered) flush()
-      list ??= { ordered, items: [] }
-      list.items.push((bullet ?? numbered)![1])
-      continue
-    }
-    flush()
-    if (line.trim()) blocks.push(<p key={blocks.length}>{renderInline(line, onCite, sourceCount)}</p>)
-  }
-  flush()
-
-  return <div className="space-y-3">{blocks}</div>
+  return (
+    <div className="space-y-3">
+      {parseAnswer(text).map((block, i) => {
+        if (block.type === 'paragraph') {
+          return <p key={i}>{renderInline(block.text, onCite, sourceCount)}</p>
+        }
+        const items = block.items.map((item, j) => <li key={j}>{renderInline(item, onCite, sourceCount)}</li>)
+        return block.ordered ? (
+          <ol key={i} start={block.start} className="list-decimal space-y-1 pl-5">
+            {items}
+          </ol>
+        ) : (
+          <ul key={i} className="list-disc space-y-1 pl-5">
+            {items}
+          </ul>
+        )
+      })}
+    </div>
+  )
 }
 
 function SourceCard({ source, index, active }: { source: Source; index: number; active: boolean }) {
@@ -288,11 +278,14 @@ export function MessageList({
   messages,
   asking,
   autoScroll = true,
+  onRetry,
 }: {
   messages: Message[]
   asking: boolean
   /** Off for static previews, where scrolling would move the host page. */
   autoScroll?: boolean
+  /** Re-ask a failed question, identified by its index in `messages`. */
+  onRetry?: (index: number) => void
 }) {
   const end = useRef<HTMLDivElement>(null)
 
@@ -304,10 +297,30 @@ export function MessageList({
     <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-6">
       {messages.map((m, i) =>
         m.role === 'user' ? (
-          <div key={i} className="flex justify-end">
-            <div className="max-w-[85%] rounded-2xl rounded-br-md bg-accent px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-on-accent">
+          <div key={i} className="flex flex-col items-end gap-1.5">
+            <div
+              className={`max-w-[85%] rounded-2xl rounded-br-md px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap ${
+                m.error ? 'border border-red-500/40 bg-surface text-ink' : 'bg-accent text-on-accent'
+              }`}
+            >
               {m.content}
             </div>
+            {m.error && (
+              <div className="flex max-w-[85%] items-center gap-2 text-xs text-red-600 dark:text-red-400">
+                <AlertCircle className="size-3.5 shrink-0" />
+                <span>{m.error}</span>
+                {onRetry && (
+                  <button
+                    onClick={() => onRetry(i)}
+                    disabled={asking}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-ink hover:bg-subtle disabled:opacity-50"
+                  >
+                    <RotateCcw className="size-3" />
+                    Retry
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <AssistantMessage key={i} message={m} />
@@ -339,12 +352,10 @@ export function MessageList({
 export function Composer({
   disabled,
   placeholder,
-  error,
   onSend,
 }: {
   disabled: boolean
   placeholder: string
-  error: string | null
   onSend: (text: string) => void
 }) {
   const [value, setValue] = useState('')
@@ -367,9 +378,6 @@ export function Composer({
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-4 md:px-6 md:pb-6">
-      {error && (
-        <p className="mb-2 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">{error}</p>
-      )}
       <div className="flex items-end gap-2 rounded-2xl border border-line bg-surface p-2 shadow-sm transition focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
         <textarea
           ref={ref}

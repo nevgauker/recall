@@ -1,15 +1,39 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { UserButton } from '@clerk/nextjs'
-import { CheckCircle2, FileSearch, Library as LibraryIcon, X, XCircle } from 'lucide-react'
+import { CheckCircle2, Library as LibraryIcon, X, XCircle } from 'lucide-react'
 import { SAMPLE_DOCUMENT_NAME, SAMPLE_QUESTIONS } from '@/lib/sample-document'
+import { LogoMark } from '@/components/brand'
 import { Composer, MessageList, Welcome } from '@/components/chat'
 import { Library } from '@/components/library'
 import { ThemeToggle } from '@/components/theme-toggle'
 import type { LibraryDocument, Message, SourceType } from '@/components/types'
+import { MAX_PDF_LABEL } from '@/lib/limits'
 
 type Toast = { kind: 'success' | 'error'; text: string }
+
+/**
+ * Read an API response's JSON, tolerating bodies that aren't JSON. Platform
+ * errors (Vercel's 413 for an oversized upload, a gateway timeout) arrive as
+ * plain text or HTML, and used to surface as a bare "Upload failed".
+ *
+ * Throws if the request was redirected: an expired session makes the
+ * middleware send API calls to the sign-in page, which fetch follows and
+ * reports as a 200. Treated as success, that showed "Added" for an upload that
+ * never happened, and crashed the page when stored as the document list.
+ */
+async function readJson(res: Response): Promise<{ error?: string; [key: string]: unknown }> {
+  if (res.redirected) {
+    throw new Error('Your session has expired. Refresh the page to sign in again.')
+  }
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok && !data.error) {
+    if (res.status === 413) return { error: `That file is too large to upload. The limit is ${MAX_PDF_LABEL}.` }
+    if (res.status === 504) return { error: 'The server took too long to respond. Try again, or try a smaller file.' }
+  }
+  return data
+}
 
 export function Workspace() {
   const [documents, setDocuments] = useState<LibraryDocument[]>([])
@@ -17,7 +41,9 @@ export function Workspace() {
   const [documentError, setDocumentError] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [asking, setAsking] = useState(false)
-  const [queryError, setQueryError] = useState<string | null>(null)
+  // `asking` is the render-time value; two clicks in the same frame both see
+  // false. The ref is updated synchronously and is the real guard.
+  const askingRef = useRef(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [loadingSample, setLoadingSample] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
@@ -26,6 +52,13 @@ export function Workspace() {
   useEffect(() => {
     fetchDocuments()
   }, [])
+
+  useEffect(() => {
+    if (!libraryOpen) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setLibraryOpen(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [libraryOpen])
 
   useEffect(() => {
     if (!toast) return
@@ -37,14 +70,20 @@ export function Workspace() {
     try {
       setDocumentError(null)
       const res = await fetch('/api/documents')
-      const data = await res.json().catch(() => ({}))
+      const data = await readJson(res)
       if (!res.ok) {
         throw new Error(data.error ?? 'Failed to fetch documents')
       }
-      setDocuments(data)
+      // Belt and braces: anything but an array would crash the first `.some()`.
+      if (!Array.isArray(data)) {
+        throw new Error('Failed to fetch documents')
+      }
+      setDocuments(data as LibraryDocument[])
     } catch (error) {
       console.error('Fetch documents error:', error)
-      setDocumentError(error instanceof Error ? error.message : 'Failed to fetch documents')
+      const message = error instanceof Error ? error.message : 'Failed to fetch documents'
+      setDocumentError(message)
+      setToast({ kind: 'error', text: message })
     } finally {
       setDocumentsLoaded(true)
     }
@@ -66,7 +105,7 @@ export function Workspace() {
       if (input.type === 'url') formData.append('url', input.url)
 
       const res = await fetch('/api/ingest', { method: 'POST', body: formData })
-      const data = await res.json().catch(() => ({}))
+      const data = await readJson(res)
       if (!res.ok) {
         throw new Error(data.error ?? 'Upload failed')
       }
@@ -85,7 +124,7 @@ export function Workspace() {
     setLoadingSample(true)
     try {
       const res = await fetch('/api/sample', { method: 'POST' })
-      const data = await res.json().catch(() => ({}))
+      const data = await readJson(res)
       if (!res.ok) {
         throw new Error(data.error ?? 'Could not load the sample document')
       }
@@ -104,12 +143,14 @@ export function Workspace() {
   }
 
   async function handleAsk(text: string) {
-    if (!text.trim() || asking) return
-    setQueryError(null)
-
-    const history = messages.map(m => ({ role: m.role, content: m.content }))
-    setMessages(prev => [...prev, { role: 'user', content: text }])
+    if (!text.trim() || askingRef.current) return
+    askingRef.current = true
     setAsking(true)
+
+    // Failed questions were never answered; sending them as history would
+    // show the model an unanswered question ahead of this one.
+    const history = messages.filter(m => !m.error).map(m => ({ role: m.role, content: m.content }))
+    setMessages(prev => [...prev, { role: 'user', content: text }])
 
     try {
       const res = await fetch('/api/query', {
@@ -117,36 +158,55 @@ export function Workspace() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: text, history }),
       })
-      const data = await res.json().catch(() => ({}))
+      const data = await readJson(res)
       if (!res.ok) {
         throw new Error(data.error ?? 'Query failed')
       }
-      if (!data.answer) {
+      if (typeof data.answer !== 'string' || !data.answer) {
         throw new Error('No answer returned')
       }
-      setMessages(prev => [...prev, { role: 'assistant', content: data.answer, sources: data.sources }])
+      const answer = data.answer
+      setMessages(prev => [...prev, { role: 'assistant', content: answer, sources: data.sources as Message['sources'] }])
     } catch (error) {
       console.error('Ask error:', error)
-      setQueryError(error instanceof Error ? error.message : 'Query failed')
+      const message = error instanceof Error ? error.message : 'Query failed'
+      // Mark the question itself as failed: the user sees why, can retry it
+      // without retyping, and it stays out of future history.
+      setMessages(prev => {
+        const next = [...prev]
+        const last = next[next.length - 1]
+        if (last?.role === 'user' && last.content === text) next[next.length - 1] = { ...last, error: message }
+        return next
+      })
     } finally {
+      askingRef.current = false
       setAsking(false)
     }
   }
 
+  function handleRetry(index: number) {
+    const failed = messages[index]
+    if (!failed?.error || askingRef.current) return
+    setMessages(prev => prev.filter((_, i) => i !== index))
+    handleAsk(failed.content)
+  }
+
   async function handleDeleteDocument(id: string) {
-    setDocumentError(null)
     setDeletingId(id)
     try {
       const res = await fetch(`/api/documents/${id}`, { method: 'DELETE' })
+      // Read even on success: readJson is what catches a session redirect.
+      const payload = await readJson(res)
       if (!res.ok) {
-        const payload = await res.json().catch(() => ({}))
         throw new Error(payload.error ?? 'Delete failed')
       }
       await fetchDocuments()
       setToast({ kind: 'success', text: 'Document deleted' })
     } catch (error) {
       console.error('Delete document error:', error)
-      setDocumentError(error instanceof Error ? error.message : 'Delete failed')
+      // A toast, not documentError: on mobile the library (where documentError
+      // renders) is usually hidden behind the closed drawer.
+      setToast({ kind: 'error', text: error instanceof Error ? error.message : 'Delete failed' })
     } finally {
       setDeletingId(null)
     }
@@ -172,9 +232,7 @@ export function Workspace() {
     <div className="flex h-dvh flex-col bg-canvas text-ink">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface px-4">
         <div className="flex items-center gap-2.5">
-          <span className="grid size-8 place-items-center rounded-lg bg-accent text-on-accent">
-            <FileSearch className="size-4" />
-          </span>
+          <LogoMark />
           <span className="text-[15px] font-semibold tracking-tight">Recall</span>
           <span className="hidden text-sm text-muted sm:inline">· Ask your documents</span>
         </div>
@@ -195,26 +253,31 @@ export function Workspace() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-80 shrink-0 border-r border-line bg-surface md:block">{library}</aside>
-
+        {/* One Library instance for every screen size. It used to be rendered
+            twice, with the mobile copy mounted only while the drawer was open,
+            so closing the drawer mid-upload discarded the upload's busy state
+            and let the same file be submitted again. */}
         {libraryOpen && (
-          <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Library">
-            <div className="absolute inset-0 bg-black/40" onClick={() => setLibraryOpen(false)} />
-            <div className="absolute inset-y-0 left-0 flex w-[88%] max-w-sm flex-col bg-surface shadow-xl">
-              <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
-                <span className="text-sm font-semibold">Your library</span>
-                <button
-                  onClick={() => setLibraryOpen(false)}
-                  aria-label="Close library"
-                  className="grid size-9 place-items-center rounded-lg text-muted hover:bg-subtle"
-                >
-                  <X className="size-4.5" />
-                </button>
-              </div>
-              <div className="min-h-0 flex-1">{library}</div>
-            </div>
-          </div>
+          <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setLibraryOpen(false)} aria-hidden />
         )}
+        <aside
+          aria-label="Library"
+          className={`fixed inset-y-0 left-0 z-50 flex w-[88%] max-w-sm flex-col bg-surface shadow-xl transition-transform duration-200 md:static md:z-auto md:w-80 md:max-w-none md:translate-x-0 md:border-r md:border-line md:shadow-none ${
+            libraryOpen ? 'translate-x-0' : 'invisible -translate-x-full md:visible'
+          }`}
+        >
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4 md:hidden">
+            <span className="text-sm font-semibold">Your library</span>
+            <button
+              onClick={() => setLibraryOpen(false)}
+              aria-label="Close library"
+              className="grid size-9 place-items-center rounded-lg text-muted hover:bg-subtle"
+            >
+              <X className="size-4.5" />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">{library}</div>
+        </aside>
 
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -231,13 +294,12 @@ export function Workspace() {
                 />
               )
             ) : (
-              <MessageList messages={messages} asking={asking} />
+              <MessageList messages={messages} asking={asking} onRetry={handleRetry} />
             )}
           </div>
 
           <Composer
             disabled={asking}
-            error={queryError}
             placeholder={hasDocuments ? 'Ask a question about your documents…' : 'Add a document first, then ask anything…'}
             onSend={handleAsk}
           />

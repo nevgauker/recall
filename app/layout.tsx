@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ClerkProvider } from "@clerk/nextjs";
+import { ThemedClerkProvider } from "@/components/themed-clerk-provider";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -59,17 +59,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        <ClerkProvider
-          appearance={{
-            variables: {
-              colorPrimary: "#4f46e5",
-              borderRadius: "0.625rem",
-              fontFamily: "var(--font-geist-sans)",
-            },
-          }}
-        >
-          {children}
-        </ClerkProvider>
+        <ThemedClerkProvider>{children}</ThemedClerkProvider>
       </body>
     </html>
   );

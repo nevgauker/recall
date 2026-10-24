@@ -1,20 +1,10 @@
 'use client'
 
-import { useSyncExternalStore } from 'react'
 import { Moon, Sun } from 'lucide-react'
-
-// The source of truth is the `.dark` class on <html>, set before first paint
-// by the script in app/layout.tsx. Subscribing to it (rather than copying it
-// into state) keeps every reader in sync and avoids a hydration mismatch.
-function subscribe(onChange: () => void) {
-  const observer = new MutationObserver(onChange)
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-  return () => observer.disconnect()
-}
-const isDark = () => document.documentElement.classList.contains('dark')
+import { useDarkMode } from './use-dark-mode'
 
 export function ThemeToggle() {
-  const dark = useSyncExternalStore(subscribe, isDark, () => false)
+  const dark = useDarkMode()
 
   function toggle() {
     const next = !dark

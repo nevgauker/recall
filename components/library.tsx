@@ -13,6 +13,7 @@ import {
   UploadCloud,
   X,
 } from 'lucide-react'
+import { MAX_DOCUMENT_NAME_CHARS, MAX_PDF_BYTES, MAX_PDF_LABEL } from '@/lib/limits'
 import type { LibraryDocument, SourceType } from './types'
 
 const TYPE_META: Record<SourceType, { label: string; icon: typeof FileText }> = {
@@ -21,8 +22,14 @@ const TYPE_META: Record<SourceType, { label: string; icon: typeof FileText }> = 
   url: { label: 'Web page', icon: Globe },
 }
 
-/** A sensible document name, so the user only types one when they want to. */
+/** A sensible document name, so the user only types one when they want to.
+ *  Always within the server's length limit: an over-long suggestion would fail
+ *  with an error about a field the user never filled in. */
 function defaultName(type: SourceType, file: File | null, text: string, url: string): string {
+  return suggestName(type, file, text, url).slice(0, MAX_DOCUMENT_NAME_CHARS)
+}
+
+function suggestName(type: SourceType, file: File | null, text: string, url: string): string {
   if (type === 'pdf' && file) return file.name.replace(/\.pdf$/i, '')
   if (type === 'url' && url) {
     try {
@@ -172,13 +179,28 @@ function AddSource({ onUpload }: { onUpload: LibraryProps['onUpload'] }) {
   const [name, setName] = useState('')
   const [dragging, setDragging] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [fileError, setFileError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const suggested = defaultName(type, file, text, url)
   const ready = type === 'pdf' ? !!file : type === 'text' ? !!text.trim() : !!url.trim()
 
   function pickFile(f: File | undefined | null) {
-    if (f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name))) setFile(f)
+    if (!f) return
+    if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) {
+      setFileError('That isn’t a PDF.')
+      return
+    }
+    // Checked here because an oversized upload is rejected by the host before
+    // it reaches the API, with no useful message.
+    if (f.size > MAX_PDF_BYTES) {
+      setFile(null)
+      setFileError(`That PDF is ${(f.size / 1024 / 1024).toFixed(1)} MB; the limit is ${MAX_PDF_LABEL}.`)
+      if (fileInput.current) fileInput.current.value = ''
+      return
+    }
+    setFileError(null)
+    setFile(f)
   }
 
   async function submit() {
@@ -245,7 +267,7 @@ function AddSource({ onUpload }: { onUpload: LibraryProps['onUpload'] }) {
                 <span className="font-medium text-accent">Choose a PDF</span> or drop it here
               </span>
             )}
-            <span className="text-xs text-muted">Up to 20 MB</span>
+            <span className="text-xs text-muted">Up to {MAX_PDF_LABEL}</span>
             <input
               ref={fileInput}
               type="file"
@@ -254,6 +276,12 @@ function AddSource({ onUpload }: { onUpload: LibraryProps['onUpload'] }) {
               onChange={e => pickFile(e.target.files?.[0])}
             />
           </label>
+        )}
+
+        {type === 'pdf' && fileError && (
+          <p className="text-xs text-red-600 dark:text-red-400" role="alert">
+            {fileError}
+          </p>
         )}
 
         {type === 'text' && (
@@ -281,7 +309,7 @@ function AddSource({ onUpload }: { onUpload: LibraryProps['onUpload'] }) {
           placeholder={suggested ? `Name: ${suggested}` : 'Name (optional)'}
           value={name}
           onChange={e => setName(e.target.value)}
-          maxLength={200}
+          maxLength={MAX_DOCUMENT_NAME_CHARS}
           className={inputClass}
           aria-label="Document name"
         />

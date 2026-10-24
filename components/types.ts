@@ -8,6 +8,9 @@ export interface Message {
   role: 'user' | 'assistant'
   content: string
   sources?: Source[]
+  /** Set on a user message whose question failed. It is shown with a retry
+   *  button and never sent as conversation history. */
+  error?: string
 }
 
 export interface LibraryDocument {

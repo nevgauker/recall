@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Upload,
 } from 'lucide-react'
+import { LogoMark } from './brand'
 import { MessageList } from './chat'
 import { ThemeToggle } from './theme-toggle'
 import type { Message } from './types'
@@ -103,9 +104,7 @@ export function Landing() {
     <div className="min-h-dvh bg-canvas text-ink">
       <header className="sticky top-0 z-30 border-b border-line bg-surface/80 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 md:px-6">
-          <span className="grid size-8 place-items-center rounded-lg bg-accent text-on-accent">
-            <FileSearch className="size-4" />
-          </span>
+          <LogoMark />
           <span className="text-[15px] font-semibold tracking-tight">Recall</span>
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
             <ThemeToggle />
