@@ -59,6 +59,15 @@ they survive quietly. Check any database you inherit and clear them:
 DELETE FROM "Document" WHERE "userId" = '__preauth__';  -- chunks cascade
 ```
 
+### Usage limits
+
+`/api/query` and `/api/ingest` spend OpenAI credit, so both call
+`enforceRateLimit()` from `lib/rate-limit.ts` before doing any work; ingest also
+calls `enforceDocumentCap()`. Limits are constants in `RULES` there — per user
+and a global daily backstop. Counters live in the `RateLimitBucket` table and are
+only written via the single atomic upsert in `consume()`; don't replace it with a
+read-then-write, which lets concurrent requests overshoot.
+
 ## Writing SQL files on Windows
 
 PowerShell 5.1's `Out-File -Encoding utf8` emits a BOM, which Postgres rejects

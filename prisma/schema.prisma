@@ -33,3 +33,15 @@ model DocumentChunk {
 
   @@index([documentId])
 }
+
+/// Usage counters for lib/rate-limit.ts. Written only through raw SQL, so the
+/// increment and the limit check stay one atomic statement.
+model RateLimitBucket {
+  key         String
+  /// Unix seconds, aligned to the window length.
+  windowStart BigInt
+  count       Int
+
+  @@id([key, windowStart])
+  @@index([windowStart])
+}

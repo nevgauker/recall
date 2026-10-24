@@ -8,11 +8,14 @@
  */
 export class AppError extends Error {
     readonly status: number
+    /** Extra response headers, e.g. Retry-After on a 429. */
+    readonly headers?: Record<string, string>
 
-    constructor(message: string, status = 400) {
+    constructor(message: string, status = 400, headers?: Record<string, string>) {
         super(message)
         this.name = 'AppError'
         this.status = status
+        this.headers = headers
     }
 }
 
