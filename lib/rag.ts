@@ -180,6 +180,12 @@ export async function answerQuestion(options: {
         throw new AppError('The model returned an empty answer.', 502)
     }
 
+    // Retrieval always returns the nearest chunks, relevant or not. When the
+    // model declines, listing them as "sources" would contradict the answer.
+    if (answer.trim().startsWith(NO_ANSWER_TEXT)) {
+        return { answer, sources: [], chunks }
+    }
+
     return {
         answer,
         sources: chunks.map(c => ({
