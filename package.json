@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
+    "eval": "tsx eval/run.ts",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy"
   },

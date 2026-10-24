@@ -69,6 +69,14 @@ and a global daily backstop. Counters live in the `RateLimitBucket` table and ar
 only written via the single atomic upsert in `consume()`; don't replace it with a
 read-then-write, which lets concurrent requests overshoot.
 
+## Answer quality
+
+`npm run eval` (see [eval/README.md](eval/README.md)) measures answers against
+the sample handbook with deterministic grading. Run it after changing chunking,
+`DEFAULT_TOP_K` / `DEFAULT_MIN_SIMILARITY`, the system prompt or the model, and
+commit the updated `eval/results/`. It uses real keys and costs cents, so it is
+not in CI. Chunk size changes apply only to documents ingested afterwards.
+
 ## Writing SQL files on Windows
 
 PowerShell 5.1's `Out-File -Encoding utf8` emits a BOM, which Postgres rejects
